@@ -3,11 +3,16 @@ package terraform
 import (
 	"fmt"
 	"log"
+	"math/big"
+	"sort"
+	"strings"
 
 	"github.com/hashicorp/terraform/addrs"
 	"github.com/hashicorp/terraform/configs"
+	"github.com/hashicorp/terraform/configs/configschema"
 	"github.com/hashicorp/terraform/providers"
 	"github.com/hashicorp/terraform/tfdiags"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // ImportStateTransformer is a GraphTransformer that adds nodes to the
@@ -308,5 +313,116 @@ func (n *graphNodeImportStateSub) Execute(ctx EvalContext, op walkOperation) (di
 		State:          &state,
 	}
 	diags = diags.Append(evalWriteState.Eval(ctx))
+
+	// Print out the config block for this resource
+	fmt.Println("Importing the following resource into Terraform...")
+	res := n.TargetAddr.Resource.ContainingResource()
+	fmt.Printf("resource \"%s\" \"%s\" {\n", res.Type, res.Name)
+	schema, _ := providerSchema.SchemaForResourceAddr(res)
+	printConfig(schema, state.Value, "")
+	fmt.Println("}")
 	return diags
+}
+
+func printConfig(schema *configschema.Block, state cty.Value, blockName string) {
+	// Sort the attribute names
+	var attrNames []string
+	spaces := 2
+	for name, attrS := range schema.Attributes {
+		// Skip the id field
+		if blockName == "" && name == "id" {
+			continue
+		}
+		v := state.GetAttr(name)
+		// Skip null values & compute-only values
+		isWhollyComputed := attrS.Computed && !attrS.Optional
+		if v.IsNull() || isWhollyComputed {
+			continue
+		}
+
+		attrNames = append(attrNames, name)
+	}
+	if len(attrNames) == 0 {
+		return
+	}
+	// Print the block if needed
+	if blockName != "" {
+		fmt.Printf("%s%s {\n", strings.Repeat(" ", spaces), blockName)
+		spaces = 4
+	}
+	sort.Strings(attrNames)
+
+	for _, name := range attrNames {
+		v := state.GetAttr(name)
+		// fmt.Println(stringValueForImport(val))
+		sVal, ok := stringValueForImport(v)
+		if ok {
+			fmt.Printf("%s%s = %s\n", strings.Repeat(" ", spaces), name, sVal)
+		}
+	}
+
+	if blockName != "" {
+		fmt.Println("  }")
+	}
+
+	for name, blockS := range schema.BlockTypes {
+		blockV := state.GetAttr(name)
+		switch blockS.Nesting {
+		case configschema.NestingSingle, configschema.NestingGroup:
+			printConfig(&blockS.Block, blockV, name)
+		case configschema.NestingList, configschema.NestingMap, configschema.NestingSet:
+			for it := blockV.ElementIterator(); it.Next(); {
+				_, blockEV := it.Element()
+				printConfig(&blockS.Block, blockEV, name)
+			}
+		default:
+			panic(fmt.Sprintf("unsupported nesting mode %s", blockS.Nesting))
+		}
+	}
+}
+
+func stringValueForImport(val cty.Value) (string, bool) {
+	var s string
+	ty := val.Type()
+
+	switch {
+	case ty.IsPrimitiveType():
+		switch ty {
+		case cty.String:
+			vS := val.AsString()
+			return fmt.Sprintf("\"%s\"", vS), vS != ""
+		case cty.Bool:
+			if val.True() {
+				return "true", true
+			}
+			return "false", true
+		case cty.Number:
+			bf := val.AsBigFloat()
+			return bf.Text('f', -1), bf != big.NewFloat(0)
+		}
+	case ty.IsListType() || ty.IsSetType() || ty.IsTupleType():
+		if val.LengthInt() == 0 {
+			return s, false
+		}
+		s = "[\n"
+
+		it := val.ElementIterator()
+		for it.Next() {
+			_, val := it.Element()
+			sV, ok := stringValueForImport(val)
+			if ok {
+				s = s + "    " + sV + ",\n"
+			}
+		}
+		s = s + "  ]"
+		return s, true
+	case ty.IsMapType():
+		if val.RawEquals(cty.MapValEmpty(ty.ElementType())) {
+			return s, false
+		}
+		return fmt.Sprintf("%#v", val), true
+	default:
+		return fmt.Sprintf("%#v", val), true
+	}
+	return s, true
 }
