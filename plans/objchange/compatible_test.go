@@ -196,6 +196,52 @@ func TestAssertObjectCompatible(t *testing.T) {
 		},
 		{
 			&configschema.Block{
+				BlockTypes: map[string]*configschema.NestedBlock{
+					"a": {
+						Nesting: configschema.NestingMap,
+						Block: configschema.Block{
+							BlockTypes: map[string]*configschema.NestedBlock{
+								"b": {
+									Nesting: configschema.NestingSingle,
+									Block: configschema.Block{
+										Attributes: map[string]*configschema.Attribute{
+											"c": {
+												Type:      cty.String,
+												Optional:  true,
+												Sensitive: true,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			cty.ObjectVal(map[string]cty.Value{
+				"a": cty.MapVal(map[string]cty.Value{
+					"inner": cty.MapVal(map[string]cty.Value{
+						"mappy": cty.ObjectVal(map[string]cty.Value{
+							"b": cty.StringVal("b value"),
+						}),
+					}),
+				}),
+			}),
+			cty.ObjectVal(map[string]cty.Value{
+				"a": cty.MapVal(map[string]cty.Value{
+					"inner": cty.MapVal(map[string]cty.Value{
+						"mappy": cty.ObjectVal(map[string]cty.Value{
+							"b": cty.StringVal("c value"),
+						}),
+					}),
+				}),
+			}),
+			[]string{
+				`.block_level.inside.  attr: inconsistent values for sensitive attribute`,
+			},
+		},
+		{
+			&configschema.Block{
 				Attributes: map[string]*configschema.Attribute{
 					"id": {
 						Type:     cty.String,

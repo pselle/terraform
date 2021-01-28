@@ -357,6 +357,7 @@ func couldHaveUnknownBlockPlaceholder(v cty.Value, blockS *configschema.NestedBl
 			return false // treated as if the list were empty, so we would see zero iterations below
 		}
 
+		fmt.Println("here")
 		// For all other nesting modes, our value should be something iterable.
 		for it := v.ElementIterator(); it.Next(); {
 			_, ev := it.Element()
