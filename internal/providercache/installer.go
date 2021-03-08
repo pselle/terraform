@@ -272,10 +272,21 @@ NeedProvider:
 		}
 		available, warnings, err := i.source.AvailableVersions(ctx, provider)
 		if err != nil {
+			fmt.Println("Err after AvailableVersions")
+			if _, ok := err.(getproviders.ErrRegistryProviderNotKnown); ok {
+				fmt.Println("thiserrrr")
+				if provider.Namespace == "hashicorp" {
+					fmt.Println("Default namespace")
+				}
+				// Do we have an existing provider installed that might satisfy this?
+				// Consider creating a new event type (probably too big, but maybe?)
+				//
+			}
 			// TODO: Consider retrying a few times for certain types of
 			// source errors that seem likely to be transient.
 			errs[provider] = err
 			if cb := evts.QueryPackagesFailure; cb != nil {
+				// This is what leads to the error and no suggestion
 				cb(provider, err)
 			}
 			// We will take no further actions for this provider.

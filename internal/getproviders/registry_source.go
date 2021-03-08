@@ -39,6 +39,7 @@ func (s *RegistrySource) AvailableVersions(ctx context.Context, provider addrs.P
 		return nil, nil, err
 	}
 
+	fmt.Println("called over here")
 	versionsResponse, warnings, err := client.ProviderVersions(ctx, provider)
 	if err != nil {
 		return nil, nil, err

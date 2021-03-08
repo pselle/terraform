@@ -512,15 +512,21 @@ func (c *InitCommand) getProviders(config *configs.Config, state *states.State, 
 			case getproviders.ErrRegistryProviderNotKnown:
 				// We might be able to suggest an alternative provider to use
 				// instead of this one.
+				fmt.Println("Before suggestion")
 				var suggestion string
 				alternative := getproviders.MissingProviderSuggestion(ctx, provider, inst.ProviderSource())
+				// Just give suggestion reminding people about the namespace thing, no need to
+				// keep track of all providers
 				if alternative != provider {
+					fmt.Println("giving suggestion")
 					suggestion = fmt.Sprintf(
 						"\n\nDid you intend to use %s? If so, you must specify that source address in each module which requires that provider. To see which modules are currently depending on %s, run the following command:\n    terraform providers",
 						alternative.ForDisplay(), provider.ForDisplay(),
 					)
 				}
+				// If we have an existing provider that might fit, do that and stuff
 
+				fmt.Println("after suggestion")
 				diags = diags.Append(tfdiags.Sourceless(
 					tfdiags.Error,
 					"Failed to query available provider packages",
